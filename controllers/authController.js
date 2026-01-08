@@ -1,50 +1,54 @@
 const User = require("./../models/userModel");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const nodemailer = require("nodemailer");
+const axios = require("axios");
 
-// ❗ dotenv does NOT load env vars on Render, but keeping it is fine for local
 require("dotenv").config();
 
 /* ======================================================
-   🔹 SMTP CONFIG (BREVO + RENDER SAFE)
+   🔹 ENV CHECK (SAFE FOR PRODUCTION LOGS)
 ====================================================== */
 
-console.log("========== SMTP ENV CHECK ==========");
+console.log("========== BREVO API ENV CHECK ==========");
+console.log("BREVO_API_KEY EXISTS:", !!process.env.BREVO_API_KEY);
 console.log("SMTP_USER EXISTS:", !!process.env.SMTP_USER);
-console.log("SMTP_PASS EXISTS:", !!process.env.SMTP_PASS);
-console.log("SENDER_EMAIL EXISTS:", !!process.env.SENDER_EMAIL);
 console.log("NODE_ENV:", process.env.NODE_ENV);
-console.log("====================================");
-
-const transporter = nodemailer.createTransport({
-  host: "smtp-relay.brevo.com",
-  port: 587,
-  secure: false, // MUST be false
-  auth: {
-    user: process.env.SMTP_USER, // Brevo SMTP login email
-    pass: process.env.SMTP_PASS, // Brevo SMTP KEY (NOT API key)
-  },
-  connectionTimeout: 20000,
-  greetingTimeout: 20000,
-  socketTimeout: 20000,
-});
+console.log("========================================");
 
 /* ======================================================
-   🔹 VERIFY SMTP (DETAILED LOGS)
+   🔹 BREVO EMAIL FUNCTION (NO SMTP)
 ====================================================== */
 
-transporter.verify((err, success) => {
-  if (err) {
-    console.error("❌ SMTP VERIFY ERROR");
-    console.error("CODE:", err.code);
-    console.error("COMMAND:", err.command);
-    console.error("RESPONSE:", err.response);
-    console.error("MESSAGE:", err.message);
-  } else {
-    console.log("✅ SMTP READY (Brevo)");
+const sendEmail = async ({ to, subject, text }) => {
+  try {
+    const response = await axios.post(
+      "https://api.brevo.com/v3/smtp/email",
+      {
+        sender: {
+          name: "Your App Name",
+          email: process.env.SMTP_USER, // verified sender
+        },
+        to: [{ email: to }],
+        subject,
+        textContent: text,
+      },
+      {
+        headers: {
+          "api-key": process.env.BREVO_API_KEY,
+          "Content-Type": "application/json",
+        },
+        timeout: 15000,
+      }
+    );
+
+    console.log("✅ EMAIL SENT (Brevo API)");
+    console.log("MESSAGE ID:", response.data.messageId);
+  } catch (error) {
+    console.error("❌ BREVO API ERROR");
+    console.error(error.response?.data || error.message);
+    throw error;
   }
-});
+};
 
 /* ======================================================
    🔹 REGISTER
@@ -62,7 +66,6 @@ module.exports.register = async (req, res) => {
 
   try {
     const existingUser = await User.findOne({ email });
-
     if (existingUser) {
       return res.status(400).json({
         status: "Fail",
@@ -84,13 +87,13 @@ module.exports.register = async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       status: "Success",
       data: { user },
     });
   } catch (error) {
     console.error("REGISTER ERROR:", error);
-    res.status(500).json({
+    return res.status(500).json({
       status: "Fail",
       message: error.message,
     });
@@ -178,7 +181,7 @@ module.exports.logOut = async (req, res) => {
 };
 
 /* ======================================================
-   🔹 SEND RESET OTP (🔥 MOST IMPORTANT FIX HERE)
+   🔹 SEND RESET OTP (BREVO API)
 ====================================================== */
 
 module.exports.sendResetOtp = async (req, res) => {
@@ -194,7 +197,7 @@ module.exports.sendResetOtp = async (req, res) => {
   try {
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(401).json({
+      return res.status(404).json({
         status: "Fail",
         message: "User not found",
       });
@@ -207,28 +210,12 @@ module.exports.sendResetOtp = async (req, res) => {
     await user.save();
 
     console.log("SENDING OTP TO:", email);
-    console.log("USING FROM EMAIL:", process.env.SMTP_USER);
 
-    const mailOption = {
-      // ✅ FIX: always use SMTP_USER as sender
-      from: `"Your App Name" <${process.env.SMTP_USER}>`,
+    await sendEmail({
       to: user.email,
       subject: "Password Reset Code",
       text: `Your CODE is ${otp}. It expires in 15 minutes.`,
-    };
-
-    try {
-      const info = await transporter.sendMail(mailOption);
-      console.log("✅ MAIL SENT");
-      console.log("MESSAGE ID:", info.messageId);
-      console.log("RESPONSE:", info.response);
-    } catch (mailError) {
-      console.error("❌ SEND MAIL FAILED");
-      console.error("CODE:", mailError.code);
-      console.error("RESPONSE:", mailError.response);
-      console.error("MESSAGE:", mailError.message);
-      throw mailError;
-    }
+    });
 
     return res.status(200).json({
       status: "Success",
@@ -238,7 +225,7 @@ module.exports.sendResetOtp = async (req, res) => {
     console.error("RESET OTP ERROR:", error);
     return res.status(500).json({
       status: "Fail",
-      message: error.message,
+      message: "Failed to send reset code",
     });
   }
 };
