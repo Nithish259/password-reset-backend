@@ -5,20 +5,6 @@ const axios = require("axios");
 
 require("dotenv").config();
 
-/* ======================================================
-    ENV CHECK (SAFE FOR PRODUCTION LOGS)
-====================================================== */
-
-console.log("========== BREVO API ENV CHECK ==========");
-console.log("BREVO_API_KEY EXISTS:", !!process.env.BREVO_API_KEY);
-console.log("SMTP_USER EXISTS:", !!process.env.SMTP_USER);
-console.log("NODE_ENV:", process.env.NODE_ENV);
-console.log("========================================");
-
-/* ======================================================
-    BREVO EMAIL FUNCTION (NO SMTP)
-====================================================== */
-
 const sendEmail = async ({ to, subject, text }) => {
   try {
     const response = await axios.post(
@@ -40,15 +26,10 @@ const sendEmail = async ({ to, subject, text }) => {
         timeout: 15000,
       }
     );
-
   } catch (error) {
     throw error;
   }
 };
-
-/* ======================================================
-   🔹 REGISTER
-====================================================== */
 
 module.exports.register = async (req, res) => {
   const { name, email, password } = req.body;
@@ -76,29 +57,22 @@ module.exports.register = async (req, res) => {
       expiresIn: "7d",
     });
 
-    res.cookie("token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
-
     return res.status(201).json({
       status: "Success",
-      data: { user },
+      token, // ✅ IMPORTANT
+      data: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+      },
     });
   } catch (error) {
-    console.error("REGISTER ERROR:", error);
     return res.status(500).json({
       status: "Fail",
       message: error.message,
     });
   }
 };
-
-/* ======================================================
-   🔹 LOGIN
-====================================================== */
 
 module.exports.login = async (req, res) => {
   const { email, password } = req.body;
@@ -131,19 +105,12 @@ module.exports.login = async (req, res) => {
       expiresIn: "7d",
     });
 
-    res.cookie("token", token, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
-
     return res.status(200).json({
       status: "Success",
+      token, // ✅ IMPORTANT
       message: "User successfully logged in",
     });
   } catch (error) {
-    console.error("LOGIN ERROR:", error);
     return res.status(500).json({
       status: "Fail",
       message: error.message,
@@ -151,28 +118,11 @@ module.exports.login = async (req, res) => {
   }
 };
 
-/* ======================================================
-   🔹 LOGOUT
-====================================================== */
-
 module.exports.logOut = async (req, res) => {
-  try {
-    res.clearCookie("token", {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-    });
-
-    return res.status(200).json({
-      status: "Success",
-      message: "User logged out successfully",
-    });
-  } catch (error) {
-    return res.status(500).json({
-      status: "Fail",
-      message: error.message,
-    });
-  }
+  return res.status(200).json({
+    status: "Success",
+    message: "User logged out successfully",
+  });
 };
 
 /* ======================================================

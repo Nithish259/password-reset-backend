@@ -1,12 +1,11 @@
 const User = require("./../models/userModel");
-const jwt = require("jsonwebtoken");
 
 module.exports.getUserData = async (req, res) => {
   try {
     const { id } = req.user;
     const user = await User.findById(id);
     if (!user) {
-      return res.status(400).json({
+      return res.status(404).json({
         status: "Fail",
         message: "User not Found",
       });
