@@ -12,10 +12,7 @@ dotenv.config({ path: "./.env" });
 const app = express();
 const port = process.env.PORT || 3000;
 
-const allowedOrigins = [
-  "http://localhost:5173",
-  "https://password-reset121.netlify.app/",
-];
+const allowedOrigins = ["https://password-reset121.netlify.app/"];
 
 app.use(express.json());
 
