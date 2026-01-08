@@ -1,7 +1,22 @@
 const User = require("./../models/userModel");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const transporter = require("./../nodemailer");
+
+require("dotenv").config();
+const nodemailer = require("nodemailer");
+
+const transporter = nodemailer.createTransport({
+  host: "smtp-relay.brevo.com",
+  port: 587,
+  secure: false,
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+  connectionTimeout: 20000,
+  greetingTimeout: 20000,
+  socketTimeout: 20000,
+});
 
 module.exports.register = async (req, res) => {
   const { name, email, password } = req.body;
@@ -120,9 +135,9 @@ module.exports.logOut = async (req, res) => {
   }
 };
 
-
 module.exports.sendResetOtp = async (req, res) => {
   const { email } = req.body;
+
   if (!email) {
     return res.status(400).json({
       status: "Fail",
@@ -140,31 +155,35 @@ module.exports.sendResetOtp = async (req, res) => {
     }
 
     const otp = String(Math.floor(100000 + Math.random() * 900000));
+
     user.resetOtp = otp;
     user.resetOtpExpiredAt = Date.now() + 15 * 60 * 1000;
-
     await user.save();
 
     const mailOption = {
-      from: process.env.SENDER_EMAIL,
+      from: `"Your App Name" <${process.env.SENDER_EMAIL}>`,
       to: user.email,
-      subject: `Password Reset Code`,
-      text: `Your Code for resetting your password is ${otp}.Use this Code for resetting your password`,
+      subject: "Password Reset Code",
+      text: `Your CODE is ${otp}. It expires in 15 minutes.`,
     };
 
-    await transporter.sendMail(mailOption);
+    const info = await transporter.sendMail(mailOption);
+    console.log("MAIL SENT:", info.messageId);
 
-    res.status(200).json({
+    return res.status(200).json({
       status: "Success",
-      message: "Otp sent your email",
+      message: "CODE sent successfully",
     });
   } catch (error) {
-    return res.status(400).json({
+    console.error("SMTP ERROR:", error);
+    return res.status(500).json({
       status: "Fail",
       message: error.message,
     });
   }
 };
+
+
 
 module.exports.resetPassword = async (req, res) => {
   const { email, otp, newPassword } = req.body;
