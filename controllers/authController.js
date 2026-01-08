@@ -52,8 +52,9 @@ module.exports.register = async (req, res) => {
 
 module.exports.login = async (req, res) => {
   const { email, password } = req.body;
+
   if (!email || !password) {
-    res.status(404).json({
+    return res.status(400).json({
       status: "Fail",
       message: "Email and password are required",
     });
@@ -62,16 +63,15 @@ module.exports.login = async (req, res) => {
   try {
     const user = await User.findOne({ email });
     if (!user) {
-      res.status(404).json({
+      return res.status(404).json({
         status: "Fail",
         message: "Invalid email",
       });
     }
 
     const isMatched = await bcrypt.compare(password, user.password);
-
     if (!isMatched) {
-      res.status(400).json({
+      return res.status(400).json({
         status: "Fail",
         message: "Invalid password",
       });
@@ -83,19 +83,19 @@ module.exports.login = async (req, res) => {
 
     res.cookie("token", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+      secure: true,
+      sameSite: "none",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
-    res.status(200).json({
+    return res.status(200).json({
       status: "Success",
-      message: "User as successfully logged in",
+      message: "User successfully logged in",
     });
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       status: "Fail",
-      message: error.messsage,
+      message: error.message,
     });
   }
 };
@@ -104,21 +104,22 @@ module.exports.logOut = async (req, res) => {
   try {
     res.clearCookie("token", {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+      secure: true,
+      sameSite: "none",
     });
 
-    res.status(200).json({
+    return res.status(200).json({
       status: "Success",
-      message: "User Logged out successfully",
+      message: "User logged out successfully",
     });
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       status: "Fail",
-      message: error.messsage,
+      message: error.message,
     });
   }
 };
+
 
 module.exports.sendResetOtp = async (req, res) => {
   const { email } = req.body;
