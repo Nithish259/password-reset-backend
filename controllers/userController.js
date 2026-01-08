@@ -3,17 +3,8 @@ const jwt = require("jsonwebtoken");
 
 module.exports.getUserData = async (req, res) => {
   try {
-    const { token } = req.cookies;
-
-    if (!token) {
-      return res.status(400).json({
-        status: "Fail",
-        message: "Not Authorized please login again",
-      });
-    }
-
-    const decodedToken = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decodedToken.id);
+    const { id } = req.user;
+    const user = await User.findById(id);
     if (!user) {
       return res.status(400).json({
         status: "Fail",

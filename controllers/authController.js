@@ -6,7 +6,7 @@ const axios = require("axios");
 require("dotenv").config();
 
 /* ======================================================
-   🔹 ENV CHECK (SAFE FOR PRODUCTION LOGS)
+    ENV CHECK (SAFE FOR PRODUCTION LOGS)
 ====================================================== */
 
 console.log("========== BREVO API ENV CHECK ==========");
@@ -16,7 +16,7 @@ console.log("NODE_ENV:", process.env.NODE_ENV);
 console.log("========================================");
 
 /* ======================================================
-   🔹 BREVO EMAIL FUNCTION (NO SMTP)
+    BREVO EMAIL FUNCTION (NO SMTP)
 ====================================================== */
 
 const sendEmail = async ({ to, subject, text }) => {
@@ -25,8 +25,8 @@ const sendEmail = async ({ to, subject, text }) => {
       "https://api.brevo.com/v3/smtp/email",
       {
         sender: {
-          name: "Your App Name",
-          email: process.env.SMTP_USER, // verified sender
+          name: "Password Reset Flow",
+          email: process.env.SMTP_USER,
         },
         to: [{ email: to }],
         subject,
@@ -41,11 +41,7 @@ const sendEmail = async ({ to, subject, text }) => {
       }
     );
 
-    console.log("✅ EMAIL SENT (Brevo API)");
-    console.log("MESSAGE ID:", response.data.messageId);
   } catch (error) {
-    console.error("❌ BREVO API ERROR");
-    console.error(error.response?.data || error.message);
     throw error;
   }
 };
@@ -172,7 +168,6 @@ module.exports.logOut = async (req, res) => {
       message: "User logged out successfully",
     });
   } catch (error) {
-    console.error("LOGOUT ERROR:", error);
     return res.status(500).json({
       status: "Fail",
       message: error.message,
@@ -279,7 +274,6 @@ module.exports.resetPassword = async (req, res) => {
       message: "Password has been reset successfully",
     });
   } catch (error) {
-    console.error("RESET PASSWORD ERROR:", error);
     return res.status(500).json({
       status: "Fail",
       message: error.message,
