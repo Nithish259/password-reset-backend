@@ -5,6 +5,6 @@ const userAuth = require("../middleware/userAuth");
 
 const userRouter = express.Router();
 
-userRouter.get("/data", getUserData);
+userRouter.get("/data", userAuth, getUserData);
 
-module.exports = userRouter;
+module.exports = userRouter; 
