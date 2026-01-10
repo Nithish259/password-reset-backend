@@ -1,232 +1,128 @@
-const User = require("./../models/userModel");
+const User = require("../models/userModel");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 const axios = require("axios");
 
-require("dotenv").config();
+/* ================= EMAIL ================= */
 
 const sendEmail = async ({ to, subject, text }) => {
-  try {
-    const response = await axios.post(
-      "https://api.brevo.com/v3/smtp/email",
-      {
-        sender: {
-          name: "Password Reset Flow",
-          email: process.env.SMTP_USER,
-        },
-        to: [{ email: to }],
-        subject,
-        textContent: text,
+  await axios.post(
+    "https://api.brevo.com/v3/smtp/email",
+    {
+      sender: {
+        name: "Password Reset",
+        email: process.env.SMTP_USER,
       },
-      {
-        headers: {
-          "api-key": process.env.BREVO_API_KEY,
-          "Content-Type": "application/json",
-        },
-        timeout: 15000,
-      }
-    );
-  } catch (error) {
-    throw error;
-  }
+      to: [{ email: to }],
+      subject,
+      textContent: text,
+    },
+    {
+      headers: {
+        "api-key": process.env.BREVO_API_KEY,
+        "Content-Type": "application/json",
+      },
+    }
+  );
 };
 
-module.exports.register = async (req, res) => {
+/* ================= REGISTER ================= */
+
+exports.register = async (req, res) => {
   const { name, email, password } = req.body;
 
-  if (!name || !email || !password) {
-    return res.status(400).json({
-      status: "Fail",
-      message: "Please fill in all the details",
-    });
-  }
+  const existingUser = await User.findOne({ email });
+  if (existingUser)
+    return res.status(400).json({ status: "Fail", message: "User exists" });
 
-  try {
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({
-        status: "Fail",
-        message: "User already exists",
-      });
-    }
+  const hashed = await bcrypt.hash(password, 10);
+  const user = await User.create({ name, email, password: hashed });
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const user = await User.create({ name, email, password: hashedPassword });
+  const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+    expiresIn: "7d",
+  });
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "7d",
-    });
-
-    return res.status(201).json({
-      status: "Success",
-      token, // ✅ IMPORTANT
-      data: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-      },
-    });
-  } catch (error) {
-    return res.status(500).json({
-      status: "Fail",
-      message: error.message,
-    });
-  }
-};
-
-module.exports.login = async (req, res) => {
-  const { email, password } = req.body;
-
-  if (!email || !password) {
-    return res.status(400).json({
-      status: "Fail",
-      message: "Email and password are required",
-    });
-  }
-
-  try {
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({
-        status: "Fail",
-        message: "Invalid email",
-      });
-    }
-
-    const isMatched = await bcrypt.compare(password, user.password);
-    if (!isMatched) {
-      return res.status(400).json({
-        status: "Fail",
-        message: "Invalid password",
-      });
-    }
-
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "7d",
-    });
-
-    return res.status(200).json({
-      status: "Success",
-      token, // ✅ IMPORTANT
-      message: "User successfully logged in",
-    });
-  } catch (error) {
-    return res.status(500).json({
-      status: "Fail",
-      message: error.message,
-    });
-  }
-};
-
-module.exports.logOut = async (req, res) => {
-  return res.status(200).json({
+  res.status(201).json({
     status: "Success",
-    message: "User logged out successfully",
+    token,
+    data: { id: user._id, name: user.name, email: user.email },
   });
 };
 
-/* ======================================================
-   🔹 SEND RESET OTP (BREVO API)
-====================================================== */
+/* ================= LOGIN ================= */
 
-module.exports.sendResetOtp = async (req, res) => {
-  const { email } = req.body;
+exports.login = async (req, res) => {
+  const { email, password } = req.body;
 
-  if (!email) {
-    return res.status(400).json({
-      status: "Fail",
-      message: "Email is required",
-    });
-  }
+  const user = await User.findOne({ email });
+  if (!user)
+    return res.status(400).json({ status: "Fail", message: "Invalid" });
 
-  try {
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({
-        status: "Fail",
-        message: "User not found",
-      });
-    }
+  const ok = await bcrypt.compare(password, user.password);
+  if (!ok) return res.status(400).json({ status: "Fail", message: "Invalid" });
 
-    const otp = String(Math.floor(100000 + Math.random() * 900000));
+  const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+    expiresIn: "7d",
+  });
 
-    user.resetOtp = otp;
-    user.resetOtpExpiredAt = Date.now() + 15 * 60 * 1000;
-    await user.save();
-
-    console.log("SENDING OTP TO:", email);
-
-    await sendEmail({
-      to: user.email,
-      subject: "Password Reset Code",
-      text: `Your CODE is ${otp}. It expires in 15 minutes.`,
-    });
-
-    return res.status(200).json({
-      status: "Success",
-      message: "CODE sent successfully",
-    });
-  } catch (error) {
-    console.error("RESET OTP ERROR:", error);
-    return res.status(500).json({
-      status: "Fail",
-      message: "Failed to send reset code",
-    });
-  }
+  res.json({ status: "Success", token });
 };
 
-/* ======================================================
-   🔹 RESET PASSWORD
-====================================================== */
+/* ================= SEND RESET LINK ================= */
 
-module.exports.resetPassword = async (req, res) => {
-  const { email, otp, newPassword } = req.body;
+exports.sendResetLink = async (req, res) => {
+  const { email } = req.body;
 
-  if (!email || !otp || !newPassword) {
-    return res.status(400).json({
-      status: "Fail",
-      message: "Email, OTP and new password are required",
-    });
-  }
+  const user = await User.findOne({ email });
+  if (!user)
+    return res.status(404).json({ status: "Fail", message: "User not found" });
 
-  try {
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(400).json({
-        status: "Fail",
-        message: "User not found",
-      });
-    }
+  const resetToken = crypto.randomBytes(32).toString("hex");
 
-    if (!user.resetOtp || user.resetOtp !== otp) {
-      return res.status(400).json({
-        status: "Fail",
-        message: "Invalid code entered",
-      });
-    }
+  const hashed = crypto.createHash("sha256").update(resetToken).digest("hex");
 
-    if (user.resetOtpExpiredAt < Date.now()) {
-      return res.status(400).json({
-        status: "Fail",
-        message: "Code has expired",
-      });
-    }
+  user.resetPasswordToken = hashed;
+  user.resetPasswordExpires = Date.now() + 15 * 60 * 1000;
+  await user.save();
 
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+  const resetLink = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
 
-    user.password = hashedPassword;
-    user.resetOtp = "";
-    user.resetOtpExpiredAt = 0;
-    await user.save();
+  await sendEmail({
+    to: user.email,
+    subject: "Reset Password",
+    text: `Click to reset your password:\n${resetLink}\nThis link expires in 15 minutes.`,
+  });
 
-    return res.status(200).json({
-      status: "Success",
-      message: "Password has been reset successfully",
-    });
-  } catch (error) {
-    return res.status(500).json({
-      status: "Fail",
-      message: error.message,
-    });
-  }
+  res.json({ status: "Success", message: "Reset link sent" });
+};
+
+/* ================= RESET PASSWORD ================= */
+
+exports.resetPassword = async (req, res) => {
+  const { token } = req.params;
+  const { password } = req.body;
+
+  const hashed = crypto.createHash("sha256").update(token).digest("hex");
+
+  const user = await User.findOne({
+    resetPasswordToken: hashed,
+    resetPasswordExpires: { $gt: Date.now() },
+  });
+
+  if (!user)
+    return res.status(400).json({ status: "Fail", message: "Invalid link" });
+
+  user.password = await bcrypt.hash(password, 10);
+  user.resetPasswordToken = "";
+  user.resetPasswordExpires = "";
+  await user.save();
+
+  res.json({ status: "Success", message: "Password reset successful" });
+};
+
+/* ================= LOGOUT ================= */
+
+exports.logOut = (req, res) => {
+  res.json({ status: "Success" });
 };
